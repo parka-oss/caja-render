@@ -1,19 +1,33 @@
-# Render repartido de la escena 01 v3.2 de la caja (esc032.py) en 10 maquinas de GitHub Actions. [XG·792d] 2026-10-12
+# Render repartido de la escena 01 de la caja en maquinas de GitHub Actions. [XG·792d] 2026-10-12
+# v3.3 (esc033.py, por defecto): re-render f75-212 (f0-74 se reusan de la v3.2: f0 identico pixel a pixel, f65 y f74 a 1 nivel; ENTREGA-v33.md) +
+# mascara del interior (AOV, en el mismo render) como artifact "mascara-N".
 # Se dispara A MANO (Actions -> "Render caja esc01" -> Run workflow). Nunca corre solo: no hay push ni schedule.
-# Calidad por defecto = etapa A de render_noche.sh: 1080x1920, Cycles 64 muestras adaptativas 0,01 + OIDN,
-# motion blur 0,5, f/5,6 (esos dos los fija esc032.py), semilla 1022. Todos los cuadros unicos de cuadros03.txt (0-149).
+# Calidad: 1080x1920, Cycles adaptativo 0,01 + OIDN, f/5,6, semilla 1022. Muestras por tramo: "muestras" antes de
+# "desde_nave" y "muestras_nave" desde ahi. Motion blur 0,5 (1,0 en f95-100, la puerta de canto); lo fija esc033.py.
 name: Render caja esc01
 
 on:
   workflow_dispatch:
     inputs:
+      script:
+        description: 'Escena: esc033.py (v3.3, nave hasta f212 + mascara) o esc032.py (v3.2)'
+        default: esc033.py
+        required: true
       cuadros:
-        description: 'Cuadros: "todos" (los 139 unicos de cuadros03.txt) o lista "66,67,140" para re-renderizar faltantes'
-        default: todos
+        description: 'Cuadros: rango "75-212" (v3.3: desde que la rendija deja ver la nave), "todos" (0-212) o lista "66,67,140" para faltantes'
+        default: '75-212'
         required: true
       muestras:
-        description: 'Muestras de Cycles (64 = calidad final; 16 = prueba)'
+        description: 'Muestras de Cycles antes de desde_nave (64 = calidad final; 16 = prueba)'
         default: '64'
+        required: true
+      muestras_nave:
+        description: 'Muestras de Cycles desde desde_nave (128 = v3.3, CRITICO_v32 P1-2; solo esc033.py)'
+        default: '128'
+        required: true
+      desde_nave:
+        description: 'Primer cuadro con muestras_nave (solo esc033.py)'
+        default: '84'
         required: true
       resolucion:
         description: 'Fraccion de 1080x1920 (1 = final; 0.5 = 540x960 de prueba)'
@@ -89,24 +103,28 @@ jobs:
       - name: Chequeo del paquete (falla si falta una textura, un logo o el .blend de figuras)
         run: |
           ~/$BLENDER_DIR/blender -b --factory-startup -t 4 --python-exit-code 1 \
-            --python escenas-caja/esc01/esc032.py --python tools/chequeo.py -- \
+            --python escenas-caja/esc01/${{ inputs.script }} --python tools/chequeo.py -- \
             --mode medir --frames 135 --res 0.5 $(cat escenas-caja/esc01/luz.args) > chequeo.log 2>&1 || true
           grep -E "^CHEQUEO|^FALTA|^CAJA_CAE|Traceback|Error" chequeo.log || true
           grep -q "^CHEQUEO .* 0 faltan" chequeo.log
       - name: Render trabajo ${{ matrix.trabajo }} (${{ matrix.n }} cuadros)
         timeout-minutes: 325
         run: |
-          mkdir -p out/frames
+          mkdir -p out/frames out/mascara
+          EXTRA=""
+          if [ "${{ inputs.script }}" != "esc032.py" ]; then
+            EXTRA="--muestras_nave ${{ inputs.muestras_nave }} --desde_nave ${{ inputs.desde_nave }} --mascara $PWD/out/mascara"
+          fi
           # no arranca un cuadro que terminaria despues de ahora + 5 h 10 min (hora del runner)
           HASTA=$(date -d '+310 min' +%H:%M)
           echo "cuadros: ${{ matrix.cuadros }}  hasta: $HASTA  nucleos: $(nproc)  RAM: $(free -g | awk '/Mem/{print $2}') GB"
           ~/$BLENDER_DIR/blender -b --factory-startup -t 4 --python-exit-code 1 \
-            --python escenas-caja/esc01/esc032.py -- \
+            --python escenas-caja/esc01/${{ inputs.script }} -- \
             --mode anim --lista "${{ matrix.cuadros }}" --res "${{ inputs.resolucion }}" --samples "${{ inputs.muestras }}" \
-            --thr 0.01 --seed 1022 --out "$PWD/out/frames" --hasta "$HASTA" \
-            $(cat escenas-caja/esc01/luz.args) 2>&1 | tee out/render_${{ matrix.trabajo }}.log | grep --line-buffered -E "FRAME_OK|HASTA|ANIM_OK|Traceback|Error"
-          rm -f out/frames/*_tmp.png
-          echo "hechos: $(ls out/frames | wc -l) de ${{ matrix.n }}"
+            --thr 0.01 --seed 1022 --out "$PWD/out/frames" --hasta "$HASTA" $EXTRA \
+            $(cat escenas-caja/esc01/luz.args) 2>&1 | tee out/render_${{ matrix.trabajo }}.log | grep --line-buffered -E "FRAME_OK|HASTA|ANIM_OK|MASCARA|Traceback|Error"
+          rm -f out/frames/*_tmp.png out/mascara/*_tmp_*.png
+          echo "hechos: $(ls out/frames | wc -l) de ${{ matrix.n }}; mascaras: $(ls out/mascara | wc -l)"
       - name: Subir cuadros (aunque haya fallado o cortado por tiempo)
         if: always()
         uses: actions/upload-artifact@v4
@@ -119,6 +137,17 @@ jobs:
           retention-days: 7
           compression-level: 0     # PNG ya viene comprimido
           if-no-files-found: warn
+      - name: Subir mascaras (fNNNN = interior, blanco = nave por la abertura; tela_fNNNN = tela de costura 1 / otras telas 0,5)
+        if: always() && inputs.script != 'esc032.py'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mascara-${{ matrix.trabajo }}
+          path: |
+            out/mascara/f*.png
+            out/mascara/tela_f*.png
+          retention-days: 7
+          compression-level: 0
+          if-no-files-found: warn
 
   verificar:
     needs: render
@@ -129,7 +158,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          pattern: frames-*
+          pattern: "*-*"
           path: art
       - name: Cuadros que faltan y determinismo del cuadro testigo
         run: |
@@ -137,13 +166,17 @@ jobs:
           python3 - <<'EOF'
           import glob, os, numpy as np
           from PIL import Image
-          pedidos = [int(x) for x in open("escenas-caja/esc01/cuadros03.txt").read().split(",")]
+          import subprocess
+          pedidos = [int(x) for x in subprocess.check_output(["python3", "tools/repartir.py", "--cuadros", "${{ inputs.cuadros }}", "--lista"], text=True).split(",")]
           hechos = {}
           for p in glob.glob("art/frames-*/**/f*.png", recursive=True):
               hechos.setdefault(int(os.path.basename(p)[1:5]), []).append(p)
           falta = [f for f in pedidos if f not in hechos]
           print("cuadros hechos %d de %d" % (len([f for f in pedidos if f in hechos]), len(pedidos)))
           print("FALTAN:", ",".join(map(str, falta)) or "ninguno")
+          if "${{ inputs.script }}" != "esc032.py":
+              mk = {int(os.path.basename(p)[1:5]) for p in glob.glob("art/mascara-*/**/f*.png", recursive=True)}
+              print("MASCARAS FALTAN:", ",".join(str(f) for f in pedidos if f not in mk) or "ninguna")
           for f, ps in sorted(hechos.items()):
               if len(ps) > 1:
                   a, b = [np.asarray(Image.open(p)).astype(int) for p in ps[:2]]

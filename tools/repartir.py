@@ -14,16 +14,31 @@ ap.add_argument("--cuadros", default="todos")
 ap.add_argument("--trabajos", type=int, default=10)
 ap.add_argument("--testigo", type=int, default=135)
 ap.add_argument("--resumen", action="store_true")
+ap.add_argument("--lista", action="store_true")   # solo imprime la lista de cuadros pedidos (para verificar)
 A = ap.parse_args()
 
-if A.cuadros.strip() in ("", "todos"):
-    FR = [int(x) for x in open(os.path.join(HERE, "..", "escenas-caja", "esc01", "cuadros03.txt")).read().split(",") if x.strip()]
-else:
-    FR = sorted({int(x) for x in A.cuadros.replace(" ", "").split(",") if x})
+def leer(spec):
+    """"todos" = los unicos de cuadros03.txt (0-149) + 150..212 (v3.3: la nave sigue). Lista "66,67,140" o rangos "84-212"."""
+    if spec.strip() in ("", "todos"):
+        fr = [int(x) for x in open(os.path.join(HERE, "..", "escenas-caja", "esc01", "cuadros03.txt")).read().split(",") if x.strip()]
+        return sorted(set(fr) | set(range(150, 213)))
+    out = set()
+    for tok in spec.replace(" ", "").split(","):
+        if "-" in tok:
+            a, b = tok.split("-"); out |= set(range(int(a), int(b) + 1))
+        elif tok:
+            out.add(int(tok))
+    return sorted(out)
+
+
+FR = leer(A.cuadros)
+if A.lista:
+    print(",".join(map(str, FR))); sys.exit(0)
 
 
 def peso(f):
-    return 1.0 if f < 66 else 1.4
+    # v3.3: la nave (f84+) va a 128 muestras (el doble que la v3.2) -> ~1,7x el costo de la apertura a 64
+    return 1.0 if f < 66 else (1.4 if f < 84 else 2.4)
 
 
 n = max(1, min(A.trabajos, len(FR)))

@@ -1,4 +1,19 @@
-# gh-render — render repartido de la escena 01 v3.2 de la caja [XG·792d] 2026-10-12
+# gh-render — render repartido de la escena 01 de la caja [XG·792d]
+
+## v3.3 (2026-10-12) — lo nuevo, arriba
+- **Escena:** `escenas-caja/esc01/esc033.py` (copia de `../esc033.py`; si se cambia allá, se vuelve a copiar). La v3.2
+  (`esc032.py`) queda igual y se puede pedir con `script = esc032.py`.
+- **Qué re-renderiza:** f75–212 (138 cuadros). f0–74 se reusan de la v3.2 (f0 idéntico píxel a píxel; f65 y f74 con
+  1 y 14 píxeles a 1 nivel). f150–212 es la nave que sigue trabajando, para la fuente de 3–4 s de la IA (PLAN 55).
+- **Muestras por tramo:** `muestras` (64) antes de `desde_nave` (84) y `muestras_nave` (128) desde ahí.
+- **Máscaras (mismo render, sin costo extra):** artifact `mascara-N` con `fNNNN.png` (blanco = nave vista por la
+  abertura; negro = caja, puerta y fondo) y `tela_fNNNN.png` (1 = tela de costura, 0,5 = otras telas).
+- `bajar_y_armar.sh` sigue siendo el de la v3.2 (139 cuadros de `cuadros03.txt`): para la v3.3 hay que juntar f0–74 de
+  la descarga v3.2 con f75–149 de la v3.3. Detalle en `../ENTREGA-v33.md`.
+
+---
+
+## v3.2 (2026-10-12)
 
 **Qué es.** Todo lo que hace falta para renderizar la escena 01 (la caja carbón que late, se abre y muestra la nave
 trabajando) en 10 máquinas de GitHub Actions a la vez, y después bajar los cuadros y armar el video con audio.
