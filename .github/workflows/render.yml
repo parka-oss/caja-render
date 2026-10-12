@@ -1,0 +1,153 @@
+# Render repartido de la escena 01 v3.2 de la caja (esc032.py) en 10 maquinas de GitHub Actions. [XG·792d] 2026-10-12
+# Se dispara A MANO (Actions -> "Render caja esc01" -> Run workflow). Nunca corre solo: no hay push ni schedule.
+# Calidad por defecto = etapa A de render_noche.sh: 1080x1920, Cycles 64 muestras adaptativas 0,01 + OIDN,
+# motion blur 0,5, f/5,6 (esos dos los fija esc032.py), semilla 1022. Todos los cuadros unicos de cuadros03.txt (0-149).
+name: Render caja esc01
+
+on:
+  workflow_dispatch:
+    inputs:
+      cuadros:
+        description: 'Cuadros: "todos" (los 139 unicos de cuadros03.txt) o lista "66,67,140" para re-renderizar faltantes'
+        default: todos
+        required: true
+      muestras:
+        description: 'Muestras de Cycles (64 = calidad final; 16 = prueba)'
+        default: '64'
+        required: true
+      resolucion:
+        description: 'Fraccion de 1080x1920 (1 = final; 0.5 = 540x960 de prueba)'
+        default: '1'
+        required: true
+      trabajos:
+        description: 'Cuantas maquinas en paralelo (1-10)'
+        default: '10'
+        required: true
+
+env:
+  BLENDER_VER: 5.1.0
+  BLENDER_DIR: blender-5.1.0-linux-x64
+  BLENDER_URL: https://download.blender.org/release/Blender5.1/blender-5.1.0-linux-x64.tar.xz
+  BLENDER_SHA256: 7f2475990613c8d4c7ac5697803fcf40d09541c1fd8c23936f4b07a169a920c7
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      matriz: ${{ steps.rep.outputs.matriz }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Repartir cuadros por costo (+ cuadro testigo 135 en dos trabajos)
+        id: rep
+        run: |
+          python3 tools/repartir.py --cuadros "${{ inputs.cuadros }}" --trabajos "${{ inputs.trabajos }}" --resumen > matriz.json
+          echo "matriz=$(cat matriz.json)" >> "$GITHUB_OUTPUT"
+      # Baja Blender UNA vez y lo deja en la cache: los 10 trabajos lo toman de ahi
+      - name: Cache de Blender
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: ~/${{ env.BLENDER_DIR }}
+          key: blender-5.1.0-linux-x64
+      - name: Bajar Blender y verificar SHA-256
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          cd ~
+          curl -fsSL --retry 3 -o blender.tar.xz "$BLENDER_URL"
+          echo "$BLENDER_SHA256  blender.tar.xz" | sha256sum -c -
+          tar -xf blender.tar.xz && rm blender.tar.xz
+          ~/$BLENDER_DIR/blender --version | head -n 1
+
+  render:
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350          # tope de GitHub: 360. El paso de render corta solo antes (ver --hasta)
+    strategy:
+      fail-fast: false            # si una maquina falla, las otras siguen
+      max-parallel: 10
+      matrix: ${{ fromJSON(needs.plan.outputs.matriz) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Librerias que Blender necesita en Ubuntu sin pantalla
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libxi6 libxrender1 libxfixes3 libgl1 libegl1 libxkbcommon0 libsm6 libxxf86vm1
+      - name: Cache de Blender
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: ~/${{ env.BLENDER_DIR }}
+          key: blender-5.1.0-linux-x64
+      - name: Bajar Blender si la cache no estaba
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          cd ~
+          curl -fsSL --retry 3 -o blender.tar.xz "$BLENDER_URL"
+          echo "$BLENDER_SHA256  blender.tar.xz" | sha256sum -c -
+          tar -xf blender.tar.xz && rm blender.tar.xz
+      - name: Chequeo del paquete (falla si falta una textura, un logo o el .blend de figuras)
+        run: |
+          ~/$BLENDER_DIR/blender -b --factory-startup -t 4 --python-exit-code 1 \
+            --python escenas-caja/esc01/esc032.py --python tools/chequeo.py -- \
+            --mode medir --frames 135 --res 0.5 $(cat escenas-caja/esc01/luz.args) > chequeo.log 2>&1 || true
+          grep -E "^CHEQUEO|^FALTA|^CAJA_CAE|Traceback|Error" chequeo.log || true
+          grep -q "^CHEQUEO .* 0 faltan" chequeo.log
+      - name: Render trabajo ${{ matrix.trabajo }} (${{ matrix.n }} cuadros)
+        timeout-minutes: 325
+        run: |
+          mkdir -p out/frames
+          # no arranca un cuadro que terminaria despues de ahora + 5 h 10 min (hora del runner)
+          HASTA=$(date -d '+310 min' +%H:%M)
+          echo "cuadros: ${{ matrix.cuadros }}  hasta: $HASTA  nucleos: $(nproc)  RAM: $(free -g | awk '/Mem/{print $2}') GB"
+          ~/$BLENDER_DIR/blender -b --factory-startup -t 4 --python-exit-code 1 \
+            --python escenas-caja/esc01/esc032.py -- \
+            --mode anim --lista "${{ matrix.cuadros }}" --res "${{ inputs.resolucion }}" --samples "${{ inputs.muestras }}" \
+            --thr 0.01 --seed 1022 --out "$PWD/out/frames" --hasta "$HASTA" \
+            $(cat escenas-caja/esc01/luz.args) 2>&1 | tee out/render_${{ matrix.trabajo }}.log | grep --line-buffered -E "FRAME_OK|HASTA|ANIM_OK|Traceback|Error"
+          rm -f out/frames/*_tmp.png
+          echo "hechos: $(ls out/frames | wc -l) de ${{ matrix.n }}"
+      - name: Subir cuadros (aunque haya fallado o cortado por tiempo)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frames-${{ matrix.trabajo }}
+          path: |
+            out/frames/*.png
+            out/render_*.log
+            chequeo.log
+          retention-days: 7
+          compression-level: 0     # PNG ya viene comprimido
+          if-no-files-found: warn
+
+  verificar:
+    needs: render
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: frames-*
+          path: art
+      - name: Cuadros que faltan y determinismo del cuadro testigo
+        run: |
+          pip install --quiet pillow numpy
+          python3 - <<'EOF'
+          import glob, os, numpy as np
+          from PIL import Image
+          pedidos = [int(x) for x in open("escenas-caja/esc01/cuadros03.txt").read().split(",")]
+          hechos = {}
+          for p in glob.glob("art/frames-*/**/f*.png", recursive=True):
+              hechos.setdefault(int(os.path.basename(p)[1:5]), []).append(p)
+          falta = [f for f in pedidos if f not in hechos]
+          print("cuadros hechos %d de %d" % (len([f for f in pedidos if f in hechos]), len(pedidos)))
+          print("FALTAN:", ",".join(map(str, falta)) or "ninguno")
+          for f, ps in sorted(hechos.items()):
+              if len(ps) > 1:
+                  a, b = [np.asarray(Image.open(p)).astype(int) for p in ps[:2]]
+                  print("TESTIGO f%d: diferencia maxima %d, pixeles distintos %d de %d" % (f, abs(a - b).max(), int((a != b).any(-1).sum()), a.shape[0] * a.shape[1]))
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as s:
+              s.write("Faltan: %s\n" % (",".join(map(str, falta)) or "ninguno"))
+          EOF

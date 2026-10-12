@@ -1,0 +1,5 @@
+descarga/
+prueba_local/
+__pycache__/
+*.pyc
+out/
