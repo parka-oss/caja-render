@@ -150,6 +150,21 @@ import caja03
 CJ = caja03.aplicar(G, A, light_col)
 cinta_k, linea_str = CJ["cinta_key"], CJ["linea_str"]
 cuelga_k = CJ["cuelga_key"]
+# v3.3 [XG·792d 10-12] Determinismo (ENTREGA-v33.md): la tarjeta "linea_luz_v3" es una Emission pura que la camara ve. Desde
+# f75 (puerta >= 8 grados) su fuerza es 0 y Cycles la pliega a un shader SIN closure: segun el grafo (con o sin AOV) y segun
+# el camino de sincronizacion (render completo o actualizacion con persistent data) la pintaba como banda negra de 6 px en el
+# techo de la nave o no la pintaba. Apagada pasa a Transparent BSDF (se ve la nave, que es lo que hay); encendida (f0-74) el
+# Mix con fac 1 se pliega a la misma Emission de siempre.
+_ml = bpy.data.materials["linea_luz_v3"]; _N = _ml.node_tree.nodes; _L = _ml.node_tree.links
+_out = next(n for n in _N if n.type == "OUTPUT_MATERIAL"); _em = _out.inputs["Surface"].links[0].from_node
+_val = _N.new("ShaderNodeValue"); _val.outputs[0].default_value = linea_str.default_value
+_L.new(_val.outputs[0], linea_str)                       # la fuerza animada pasa a vivir en el nodo Value
+_on = _N.new("ShaderNodeMath"); _on.operation = "GREATER_THAN"; _on.inputs[1].default_value = 0.0
+_L.new(_val.outputs[0], _on.inputs[0])
+_tr = _N.new("ShaderNodeBsdfTransparent"); _mx = _N.new("ShaderNodeMixShader")
+_L.new(_on.outputs[0], _mx.inputs[0]); _L.new(_tr.outputs[0], _mx.inputs[1]); _L.new(_em.outputs[0], _mx.inputs[2])
+_L.new(_mx.outputs[0], _out.inputs["Surface"])
+linea_str = _val.outputs[0]
 
 cu_d = bpy.data.lights.new("cuna_luz", "SPOT"); cu_d.energy = A.cuna; cu_d.color = light_col(A.tkcuna)
 cu_d.spot_size = math.radians(120); cu_d.spot_blend = 0.2; cu_d.shadow_soft_size = 0.012
@@ -774,16 +789,6 @@ elif A.mode == "anim":
             if _dt.datetime.now() + _dt.timedelta(seconds=est) > LIM:
                 print("HASTA_CORTE antes de f%d (estimado %.0f s)" % (f, est), flush=True); break
         sc.frame_set(f); calidad(f); mascara_antes(f)
-        if not durs and not getattr(A, "_calentado", False):
-            # [XG·792d 10-12] El primer cuadro que renderiza cada proceso sale distinto (prueba GitHub 38306026929: f135 "en frio"
-            # con una banda de 6 px corrida en y 566-575; "en caliente", despues de f98, igual al v3.2). Se renderiza una vez y se
-            # descarta, asi todos los cuadros salen en caliente y dos maquinas dan el mismo cuadro.
-            A._calentado = True
-            sc.render.filepath = p[:-4] + "_calentar.png"
-            bpy.ops.render.render(write_still=True)
-            os.remove(sc.render.filepath)
-            print("CALENTADO con f%d" % f, flush=True)
-            sc.frame_set(f); calidad(f); mascara_antes(f)
         tmp = p[:-4] + "_tmp.png"            # escritura atomica: un cuadro cortado a mitad nunca queda con el nombre final
         sc.render.filepath = tmp
         t1 = time.time()
