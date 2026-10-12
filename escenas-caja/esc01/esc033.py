@@ -774,6 +774,16 @@ elif A.mode == "anim":
             if _dt.datetime.now() + _dt.timedelta(seconds=est) > LIM:
                 print("HASTA_CORTE antes de f%d (estimado %.0f s)" % (f, est), flush=True); break
         sc.frame_set(f); calidad(f); mascara_antes(f)
+        if not durs and not getattr(A, "_calentado", False):
+            # [XG·792d 10-12] El primer cuadro que renderiza cada proceso sale distinto (prueba GitHub 38306026929: f135 "en frio"
+            # con una banda de 6 px corrida en y 566-575; "en caliente", despues de f98, igual al v3.2). Se renderiza una vez y se
+            # descarta, asi todos los cuadros salen en caliente y dos maquinas dan el mismo cuadro.
+            A._calentado = True
+            sc.render.filepath = p[:-4] + "_calentar.png"
+            bpy.ops.render.render(write_still=True)
+            os.remove(sc.render.filepath)
+            print("CALENTADO con f%d" % f, flush=True)
+            sc.frame_set(f); calidad(f); mascara_antes(f)
         tmp = p[:-4] + "_tmp.png"            # escritura atomica: un cuadro cortado a mitad nunca queda con el nombre final
         sc.render.filepath = tmp
         t1 = time.time()
