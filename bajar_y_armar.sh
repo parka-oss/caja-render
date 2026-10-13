@@ -33,7 +33,7 @@ out = os.path.join(D, "frames"); shutil.rmtree(out, ignore_errors=True); os.make
 pedidos = [int(x) for x in open("escenas-caja/esc01/cuadros03.txt").read().split(",")]
 hechos = {}
 for p in glob.glob(os.path.join(D, "**", "f[0-9][0-9][0-9][0-9].png"), recursive=True):   # frames-*/ y re-renders en subcarpetas
-    if os.path.dirname(os.path.abspath(p)) == os.path.abspath(out):
+    if os.path.dirname(os.path.abspath(p)) == os.path.abspath(out) or "mascara" in p:   # v3.3: las mascaras no son cuadros [XG·792d]
         continue
     hechos.setdefault(int(os.path.basename(p)[1:5]), []).append(p)
 for f, ps in sorted(hechos.items()):
