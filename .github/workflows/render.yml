@@ -1,6 +1,7 @@
 # Render repartido de la escena 01 de la caja en maquinas de GitHub Actions. [XG·792d] 2026-10-12
 # v3.3 (esc033.py, por defecto): re-render f75-212 (f0-74 se reusan de la v3.2: f0 identico pixel a pixel, f65 y f74 a 1 nivel; ENTREGA-v33.md) +
 # mascara del interior (AOV, en el mismo render) como artifact "mascara-N".
+# v3.4 (esc034.py + curvas04.py, por defecto): gestos de la nave por operario, sin salto de pose; re-render solo f84-212 (f0-83 no cambian).
 # Se dispara A MANO (Actions -> "Render caja esc01" -> Run workflow). Nunca corre solo: no hay push ni schedule.
 # Calidad: 1080x1920, Cycles adaptativo 0,01 + OIDN, f/5,6, semilla 1022. Muestras por tramo: "muestras" antes de
 # "desde_nave" y "muestras_nave" desde ahi. Motion blur 0,5 (1,0 en f95-100, la puerta de canto); lo fija esc033.py.
@@ -10,8 +11,8 @@ on:
   workflow_dispatch:
     inputs:
       script:
-        description: 'Escena: esc033.py (v3.3, nave hasta f212 + mascara) o esc032.py (v3.2)'
-        default: esc033.py
+        description: 'Escena: esc034.py (v3.4, gestos sin diente de sierra; re-render f84-212), esc033.py (v3.3) o esc032.py (v3.2)'
+        default: esc034.py
         required: true
       cuadros:
         description: 'Cuadros: rango "75-212" (v3.3: desde que la rendija deja ver la nave), "todos" (0-212) o lista "66,67,140" para faltantes'

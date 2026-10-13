@@ -1,6 +1,13 @@
 # gh-render — render repartido de la escena 01 de la caja [XG·792d]
 
-## v3.3 (2026-10-12) — lo nuevo, arriba
+## v3.4 (2026-10-12) — lo nuevo, arriba
+- **Escena:** `escenas-caja/esc01/esc034.py` + `curvas04.py` (copias de `../esc034.py` y `../curvas04.py`). Arregla el
+  P0-V1 de `CRITICO_v33.md`: cada operario con su ciclo (1,0–1,6 s, fase con semilla), sin saltos de pose; la nave se
+  repite de f150 a f212 sin costura. `script` ya viene en `esc034.py`; `esc033.py` y `esc032.py` siguen disponibles.
+- **Qué re-renderiza:** `cuadros = 84-212` (129 cuadros). f0–83 no cambian (curva vieja exacta hasta f83). Detalle y
+  comando en `../ENTREGA-v34.md`.
+
+## v3.3 (2026-10-12)
 - **Escena:** `escenas-caja/esc01/esc033.py` (copia de `../esc033.py`; si se cambia allá, se vuelve a copiar). La v3.2
   (`esc032.py`) queda igual y se puede pedir con `script = esc032.py`.
 - **Qué re-renderiza:** f75–212 (138 cuadros). f0–74 se reusan de la v3.2 (f0 idéntico píxel a píxel; f65 y f74 con
